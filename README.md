@@ -4,16 +4,16 @@ An Android application supporting multi-user real-time collaborative drawing, fo
 
 ## Features
 
-- 🎨 **Real-time Collaboration**: Paths, cursors, and clear events synced in real-time
-- 🧰 **Drawing Tools**: Brush, Eraser, Line, Rectangle, Circle, Text
-- ↩️ **Undo/Redo**: Local operations support undo and redo
-- 🧭 **Pan/Zoom**: Support canvas dragging and pinch-to-zoom
-- 🎤 **Voice Chat**: Talk while drawing
-- ▶️ **Replay**: Playback stroke by stroke, support seeking, pause/resume
-- 🛡️ **Permission System**: Owner/Editor/Viewer roles, member management, and kicking
-- 🌗 **Theme**: Switch between Day/Night modes
-- 🖼️ **Gallery**: Export and save artworks to the cloud
-- 🔔 **Join Notifications**: Notify when someone joins the room (toggle in settings)
+- **Real-time Collaboration**: Paths, cursors, and clear events synced in real-time
+- **Drawing Tools**: Brush, Eraser, Line, Rectangle, Circle, Text
+- **Undo/Redo**: Local operations support undo and redo
+- **Pan/Zoom**: Support canvas dragging and pinch-to-zoom
+- **Voice Chat**: Talk while drawing
+- **Replay**: Playback stroke by stroke, support seeking, pause/resume
+- **Permission System**: Owner/Editor/Viewer roles, member management, and kicking
+- **Theme**: Switch between Day/Night modes
+- **Gallery**: Export and save artworks to the cloud
+- **Join Notifications**: Notify when someone joins the room (toggle in settings)
 
 ## Tech Stack
 
