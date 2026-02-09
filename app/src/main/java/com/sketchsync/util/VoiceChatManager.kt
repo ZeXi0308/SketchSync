@@ -1,0 +1,230 @@
+package com.sketchsync.util
+
+import android.content.Context
+import android.util.Log
+import com.sketchsync.BuildConfig
+import io.agora.rtc2.ChannelMediaOptions
+import io.agora.rtc2.Constants
+import io.agora.rtc2.IRtcEngineEventHandler
+import io.agora.rtc2.RtcEngine
+import io.agora.rtc2.RtcEngineConfig
+import javax.inject.Inject
+import javax.inject.Singleton
+
+
+class VoiceChatManager(
+    private val context: Context
+) {
+    private var rtcEngine: RtcEngine? = null
+    private var isInitialized = false
+    private var isMuted = false
+    private var currentChannel: String? = null
+    
+    // 主线程Handler用于UI回调
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    
+    private var onJoinChannelSuccessListener: ((String, Int) -> Unit)? = null
+    private var onUserJoinedListener: ((Int) -> Unit)? = null
+    private var onUserLeftListener: ((Int) -> Unit)? = null
+    private var onErrorListener: ((Int, String) -> Unit)? = null
+    
+    private val eventHandler = object : IRtcEngineEventHandler() {
+        override fun onJoinChannelSuccess(channel: String, uid: Int, elapsed: Int) {
+            Log.d(TAG, "Join channel success: $channel, uid: $uid")
+            currentChannel = channel
+            mainHandler.post {
+                onJoinChannelSuccessListener?.invoke(channel, uid)
+            }
+        }
+        
+        override fun onUserJoined(uid: Int, elapsed: Int) {
+            Log.d(TAG, "User joined: $uid")
+            mainHandler.post {
+                onUserJoinedListener?.invoke(uid)
+            }
+        }
+        
+        override fun onUserOffline(uid: Int, reason: Int) {
+            Log.d(TAG, "User offline: $uid, reason: $reason")
+            mainHandler.post {
+                onUserLeftListener?.invoke(uid)
+            }
+        }
+        
+        override fun onError(err: Int) {
+            Log.e(TAG, "Agora error: $err")
+            mainHandler.post {
+                onErrorListener?.invoke(err, getErrorMessage(err))
+            }
+        }
+        
+        override fun onLeaveChannel(stats: RtcStats?) {
+            Log.d(TAG, "Left channel")
+            currentChannel = null
+        }
+    }
+    
+    /**
+     * 初始化Agora引擎
+     */
+    fun initialize(): Boolean {
+        Log.d(TAG, "initialize() called, isInitialized=$isInitialized")
+        if (isInitialized) return true
+        
+        val appId = BuildConfig.AGORA_APP_ID
+        Log.d(TAG, "AGORA_APP_ID: ${if (appId.isBlank()) "EMPTY!" else appId.take(8) + "..."}")
+        
+        if (appId.isBlank()) {
+            Log.e(TAG, "Agora App ID is empty - check local.properties")
+            return false
+        }
+        
+        return try {
+            Log.d(TAG, "Creating RtcEngineConfig...")
+            val config = RtcEngineConfig().apply {
+                mContext = com.sketchsync.SketchSyncApplication.appContext
+                mAppId = appId
+                mEventHandler = eventHandler
+            }
+            
+            Log.d(TAG, "Creating RtcEngine...")
+            rtcEngine = RtcEngine.create(config)
+            
+            Log.d(TAG, "Configuring audio settings...")
+            rtcEngine?.apply {
+                enableAudio()
+                setChannelProfile(Constants.CHANNEL_PROFILE_COMMUNICATION)
+                setAudioProfile(
+                    Constants.AUDIO_PROFILE_DEFAULT,
+                    Constants.AUDIO_SCENARIO_CHATROOM
+                )
+                // 默认使用扬声器（免提）
+                setEnableSpeakerphone(true)
+                setDefaultAudioRoutetoSpeakerphone(true)
+            }
+            
+            isInitialized = true
+            Log.d(TAG, "Agora initialized successfully")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize Agora: ${e.message}", e)
+            false
+        }
+    }
+    
+    /**
+     * 加入语音频道
+     */
+    fun joinChannel(channelId: String, userId: Int): Boolean {
+        Log.d(TAG, "joinChannel() called: channelId=$channelId, userId=$userId")
+        
+        if (!isInitialized) {
+            Log.d(TAG, "Not initialized, calling initialize()...")
+            if (!initialize()) {
+                Log.e(TAG, "initialize() failed")
+                return false
+            }
+        }
+        
+        return try {
+            val options = ChannelMediaOptions().apply {
+                autoSubscribeAudio = true
+                publishMicrophoneTrack = true
+                clientRoleType = Constants.CLIENT_ROLE_BROADCASTER
+            }
+            
+            Log.d(TAG, "Calling rtcEngine?.joinChannel()...")
+            val result = rtcEngine?.joinChannel(null, channelId, userId, options)
+            Log.d(TAG, "joinChannel returned: $result")
+            result == 0
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to join channel: ${e.message}", e)
+            false
+        }
+    }
+    
+    /**
+     * 离开语音频道
+     */
+    fun leaveChannel() {
+        try {
+            rtcEngine?.leaveChannel()
+            currentChannel = null
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to leave channel: ${e.message}")
+        }
+    }
+    
+    /**
+     * 静音/取消静音
+     */
+    fun setMuted(muted: Boolean) {
+        isMuted = muted
+        rtcEngine?.muteLocalAudioStream(muted)
+    }
+    
+    /**
+     * 切换静音状态
+     */
+    fun toggleMute(): Boolean {
+        isMuted = !isMuted
+        rtcEngine?.muteLocalAudioStream(isMuted)
+        return isMuted
+    }
+    
+    /**
+     * 获取当前静音状态
+     */
+    fun isMuted(): Boolean = isMuted
+    
+    /**
+     * 是否已加入频道
+     */
+    fun isInChannel(): Boolean = currentChannel != null
+    
+    /**
+     * 设置监听器
+     */
+    fun setOnJoinChannelSuccessListener(listener: (String, Int) -> Unit) {
+        onJoinChannelSuccessListener = listener
+    }
+
+    fun setOnUserJoinedListener(listener: (Int) -> Unit) {
+        onUserJoinedListener = listener
+    }
+    
+    fun setOnUserLeftListener(listener: (Int) -> Unit) {
+        onUserLeftListener = listener
+    }
+    
+    fun setOnErrorListener(listener: (Int, String) -> Unit) {
+        onErrorListener = listener
+    }
+    
+    /**
+     * 销毁引擎
+     */
+    fun destroy() {
+        rtcEngine?.leaveChannel()
+        RtcEngine.destroy()
+        rtcEngine = null
+        isInitialized = false
+        currentChannel = null
+    }
+    
+    private fun getErrorMessage(errorCode: Int): String {
+        return when (errorCode) {
+            Constants.ERR_INVALID_TOKEN -> "Invalid token"
+            Constants.ERR_TOKEN_EXPIRED -> "Token expired"
+            Constants.ERR_NOT_INITIALIZED -> "Not initialized"
+            Constants.ERR_CONNECTION_INTERRUPTED -> "Connection interrupted"
+            Constants.ERR_CONNECTION_LOST -> "Connection lost"
+            Constants.ERR_NOT_IN_CHANNEL -> "Not in channel"
+            else -> "Unknown error: $errorCode"
+        }
+    }
+    
+    companion object {
+        private const val TAG = "VoiceChatManager"
+    }
+}
